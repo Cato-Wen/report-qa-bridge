@@ -1,0 +1,6 @@
+node_modules/
+*.log
+.DS_Store
+# runtime state lives in ~/.report-qa-bridge, never in the repo
+.report-qa-bridge/
+tokens*.txt

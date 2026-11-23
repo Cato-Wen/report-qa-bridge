@@ -1,0 +1,17 @@
+{
+  "name": "report-qa-bridge",
+  "version": "0.1.0",
+  "description": "Let colleagues ask Claude Code about an HTML report you generated — read-only, per-user tokens, author-selected MCP servers and skills.",
+  "type": "module",
+  "bin": {
+    "rqb": "bin/rqb.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
