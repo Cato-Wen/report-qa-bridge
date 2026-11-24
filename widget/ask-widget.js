@@ -7,7 +7,7 @@
   const T = {
     zh: {
       ask: "问 Claude", fab: "💬 问 Claude", newTopic: "新话题", settings: "连接设置", close: "关闭",
-      cfgIntro: "连接信息由报告作者提供，填一次即可，本机所有报告通用。", url: "服务地址", token: "个人口令", save: "保存并测试",
+      cfgIntro: "连接信息由报告作者提供，填一次即可，本机所有报告通用。", url: "服务地址", token: "个人口令", tokenPh: "48 位口令（作者单独发给你）", save: "保存并测试",
       testing: "测试中…", okConn: "连接成功 ✓", badConn: "连接失败，请检查地址和口令",
       empty: "选中报告里的文字后点\"问 Claude\"，选中内容会自动带上；也可以直接输入问题。\n\n每次回答通常需要 30 秒到 2 分钟。同一话题里可以继续追问。",
       topicReset: "已开始新话题。", placeholder: "输入你的问题，Ctrl + Enter 发送", send: "发送",
@@ -22,7 +22,7 @@
     },
     en: {
       ask: "Ask Claude", fab: "💬 Ask Claude", newTopic: "New topic", settings: "Connection", close: "Close",
-      cfgIntro: "Get these from the report author. You only need to enter them once for all reports.", url: "Server URL", token: "Personal token", save: "Save & test",
+      cfgIntro: "Get these from the report author. You only need to enter them once for all reports.", url: "Server URL", token: "Personal token", tokenPh: "48-character token from the author", save: "Save & test",
       testing: "Testing…", okConn: "Connected ✓", badConn: "Failed — check the URL and token",
       empty: "Select any text in the report and click \"Ask Claude\" — the selection is attached automatically. Or just type a question.\n\nAnswers usually take 30 s – 2 min. You can ask follow-ups in the same topic.",
       topicReset: "Started a new topic.", placeholder: "Type your question, Ctrl + Enter to send", send: "Send",
@@ -97,7 +97,7 @@
       <div class="rqb-status" id="rqb-status"></div>
       <div class="rqb-cfg" id="rqb-cfg"><div>${T.cfgIntro}</div>
         <label for="rqb-url">${T.url}</label><input id="rqb-url" placeholder="http://192.168.x.x:8787" autocomplete="off">
-        <label for="rqb-token">${T.token}</label><input id="rqb-token" type="password" autocomplete="off">
+        <label for="rqb-token">${T.token}</label><input id="rqb-token" type="text" spellcheck="false" autocomplete="off" placeholder="${T.tokenPh}">
         <div class="rqb-row"><span id="rqb-cfg-msg"></span><button class="rqb-btn pri" id="rqb-save" type="button">${T.save}</button></div></div>
       <div class="rqb-body" id="rqb-body"><div class="rqb-empty">${esc(T.empty)}</div></div>
       <div class="rqb-foot">
@@ -194,7 +194,9 @@
   }
   $("rqb-gear").onclick = () => toggleCfg();
   $("rqb-save").onclick = async () => {
-    localStorage.setItem(LS.url, $("rqb-url").value.trim()); localStorage.setItem(LS.token, $("rqb-token").value.trim());
+    const tok = ($("rqb-token").value.trim().split(/\s+/).pop() || "").replace(/^["']|["']$/g, "");
+    $("rqb-token").value = tok;
+    localStorage.setItem(LS.url, $("rqb-url").value.trim()); localStorage.setItem(LS.token, tok);
     $("rqb-cfg-msg").textContent = T.testing;
     const ok = await health();
     $("rqb-cfg-msg").textContent = ok ? T.okConn : T.badConn;
