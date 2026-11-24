@@ -3,11 +3,13 @@
 // Usage (set up by runner.mjs):  node guard.mjs <policy.json>
 // Policy: { builtin: [...], skills: ["rqb:x"], mcp: { server: { preset, tools } }, denyPaths: [regex...] }
 import fs from "node:fs";
-import { MONGO_READ_OPS } from "./mcp.mjs";
+import { MONGO_READ_OPS, checkReadOnlySql } from "./mcp.mjs";
 
 export const DEFAULT_DENY_PATHS = [
   "(^|/)\\.env", "\\.pem$", "\\.key$", "\\.p12$", "\\.pfx$", "\\.jks$", "id_rsa", "secret", "credential",
   "(^|/)\\.claude(/|$)", "\\.claude\\.json$", "(^|/)\\.report-qa-bridge(/|$)", "\\.token$", "(^|/)\\.git/",
+  // runtime config of the bridge itself (MCP connection strings, settings, policy)
+  "rqb-runtime-[^/]*/[^/]+/(mcp|settings|policy)\\.json$",
 ];
 
 /** Pure decision function (exported for tests). Returns null to allow, or a reason string to block. */
@@ -23,6 +25,10 @@ export function decide(policy, tool, input = {}) {
       if (!MONGO_READ_OPS.includes(op)) return `MongoDB tool "${op}" is not allowed (read-only)`;
       if (/["']\$(out|merge)["']/.test(text)) return "$out / $merge write stages are not allowed (read-only)";
       if (/\$where|\$function|\$accumulator/.test(text)) return "server-side JavaScript is not allowed";
+    }
+    if (s.preset === "bigquery" && op === "execute_sql") {
+      const reason = checkReadOnlySql(input.sql ?? input.query);
+      if (reason) return `BigQuery: ${reason}`;
     }
     return null;
   }

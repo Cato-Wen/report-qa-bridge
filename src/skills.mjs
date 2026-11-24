@@ -45,9 +45,10 @@ export function buildSkillPlugin(names, cwd, outDir) {
     JSON.stringify({ name: PLUGIN_NAME, version: "0.0.0", description: "report-qa-bridge: skills selected by the report author" }));
   const invocable = [];
   for (const n of names) {
-    const src = resolveSkill(n, cwd);
-    const short = path.basename(src);
-    fs.cpSync(src, path.join(outDir, "skills", short), { recursive: true });
+    const linked = resolveSkill(n, cwd);
+    const short = path.basename(linked);
+    // skills are often symlinked into ~/.claude/skills; copy real files (Windows can't create symlinks without admin)
+    fs.cpSync(fs.realpathSync(linked), path.join(outDir, "skills", short), { recursive: true, dereference: true });
     invocable.push(`${PLUGIN_NAME}:${short}`);
   }
   return invocable;

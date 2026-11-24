@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  HOME, PATHS, ensureHome, readJson, loadUsers, addUser, removeUser, normalizeName,
+  HOME, PATHS, ensureHome, readJson, loadUsers, loadDefaults, saveDefaults, addUser, removeUser, normalizeName,
   listReports, loadReport, saveReport, removeReport, checkReportId,
 } from "../src/config.mjs";
 import { findCurrentSession, sessionExists } from "../src/sessions.mjs";
@@ -35,12 +35,17 @@ Reports
                                conversation the answers fork from (default: current = your latest
                                interactive Claude Code session in --cwd)
       --cwd <dir>              repo the answering process may read (default: git root of the HTML, else cwd)
-      --mcp a,b                MCP servers to expose (MongoDB servers are forced read-only)
+      --mcp a,b|none           MCP servers to expose (default: rqb defaults). MongoDB and BigQuery
+                               are forced read-only
       --mcp-tools name=t1,t2   expose only these tools of a server (required for servers without a read-only preset)
-      --skills a,b             skills to expose (copied into a private plugin; Bash-dependent skills won't work)
+      --skills a,b|none        skills to expose (default: rqb defaults) (copied into a private plugin; Bash-dependent skills won't work)
       --users a,b|*            who may ask (default: *)
       --prompt <text>          extra instructions for the answering model
       --lang zh|en             widget language (default: from <html lang>)
+
+Defaults (applied to newly registered reports when --mcp / --skills are not given)
+  rqb defaults show
+  rqb defaults set [--mcp a,b|none] [--skills a,b|none]
 
 Other
   rqb stats [--days 7]        questions and cost per user / report
@@ -74,8 +79,12 @@ function applyOptions(report, { requireValid = true } = {}) {
   if (flags.prompt) report.prompt = flags.prompt;
   if (flags.lang) report.lang = flags.lang;
   if (flags.users) report.users = list(flags.users);
+  const isNew = report.mcp === undefined;
+  const defaults = loadDefaults();
+  if (isNew && flags.mcp === undefined && !flags["mcp-tools"]) report.mcp = defaults.mcp.map(name => ({ name }));
+  if (isNew && flags.skills === undefined) report.skills = [...defaults.skills];
   if (flags.mcp !== undefined || flags["mcp-tools"]) {
-    const names = new Set(list(flags.mcp));
+    const names = new Set(flags.mcp === "none" ? [] : list(flags.mcp));
     const tools = {};
     for (const spec of flags["mcp-tools"] || []) {
       const [name, t] = String(spec).split("=");
@@ -83,7 +92,7 @@ function applyOptions(report, { requireValid = true } = {}) {
     }
     report.mcp = [...names].map(name => ({ name, ...(tools[name] ? { tools: tools[name] } : {}) }));
   }
-  if (flags.skills !== undefined) report.skills = list(flags.skills);
+  if (flags.skills !== undefined) report.skills = flags.skills === "none" ? [] : list(flags.skills);
   if (flags.session !== undefined || report.session === undefined) {
     const s = flags.session === undefined || flags.session === true ? "current" : flags.session;
     report.session = s === "none" ? null : s === "current" ? findCurrentSession(report.cwd) : s;
@@ -191,6 +200,20 @@ switch (cmd) {
     if (!r) die(`report "${flags.id}" not registered (use: rqb report add)`);
     injectFile(html, widgetCfg(r));
     console.log(`widget injected into ${html}`);
+    break;
+  }
+
+  case "defaults": {
+    const d = loadDefaults();
+    if (sub === "set") {
+      if (flags.mcp !== undefined) d.mcp = flags.mcp === "none" ? [] : list(flags.mcp);
+      if (flags.skills !== undefined) d.skills = flags.skills === "none" ? [] : list(flags.skills);
+      const catalog = loadMcpCatalog(process.cwd());
+      for (const name of d.mcp) { try { buildServer({ name }, catalog); } catch (e) { die(e.message); } }
+      saveDefaults(d);
+    } else if (sub && sub !== "show") die("usage: rqb defaults show|set");
+    console.log(`default mcp    : ${d.mcp.join(", ") || "-"}`);
+    console.log(`default skills : ${d.skills.join(", ") || "-"}`);
     break;
   }
 

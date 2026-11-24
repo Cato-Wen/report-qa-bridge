@@ -25,6 +25,30 @@ export function loadMcpCatalog(cwd) {
 export function presetFor(config) {
   const blob = [config.command, ...(config.args || []), config.url].filter(Boolean).join(" ");
   if (/mongodb-mcp-server/i.test(blob)) return "mongodb";
+  if (/toolbox/i.test(blob) && /--prebuilt[\s=]+bigquery/i.test(blob)) return "bigquery";
+  return null;
+}
+
+// Google MCP Toolbox (prebuilt bigquery) has no read-only switch: expose metadata tools + execute_sql,
+// and let the guard allow only single SELECT/WITH statements. forecast / analyze_contribution create
+// BigQuery ML models and ask_data_insights calls an external agent, so they stay off.
+export const BIGQUERY_READ_TOOLS = ["list_dataset_ids", "list_table_ids", "get_dataset_info", "get_table_info", "search_catalog", "execute_sql"];
+
+const SQL_FORBIDDEN = /\b(insert|update|delete|merge|create|drop|alter|truncate|grant|revoke|call|export|load|execute|declare|set|begin|commit|rollback|undrop)\b/i;
+
+/** null = allowed; otherwise the reason. Fails closed on anything that is not one plain query. */
+export function checkReadOnlySql(sql) {
+  if (typeof sql !== "string" || !sql.trim()) return "empty SQL";
+  const s = sql
+    .replace(/--[^\n]*|#[^\n]*/g, " ")            // line comments
+    .replace(/\/\*[\s\S]*?\*\//g, " ")             // block comments
+    .replace(/'''[\s\S]*?'''|"""[\s\S]*?"""/g, "''") // triple-quoted strings
+    .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, "''") // string literals
+    .trim();
+  if (!/^\(*\s*(select|with)\b/i.test(s)) return "only SELECT / WITH queries are allowed (read-only)";
+  if (/;\s*\S/.test(s)) return "only a single statement is allowed";
+  const m = SQL_FORBIDDEN.exec(s);
+  if (m) return `"${m[1].toUpperCase()}" is not allowed (read-only)`;
   return null;
 }
 
@@ -47,6 +71,12 @@ export function buildServer(spec, catalog) {
   if (preset === "mongodb") {
     config.args = [...(config.args || []).filter(a => a !== "--readOnly"), "--readOnly", "--disabledTools", "export"];
     return { config, policy: { preset, tools: spec.tools?.length ? spec.tools : null } };
+  }
+  if (preset === "bigquery") {
+    const tools = spec.tools?.length ? spec.tools.filter(t => BIGQUERY_READ_TOOLS.includes(t)) : BIGQUERY_READ_TOOLS;
+    const extra = (spec.tools || []).filter(t => !BIGQUERY_READ_TOOLS.includes(t));
+    if (extra.length) throw new Error(`BigQuery tools not allowed in read-only mode: ${extra.join(", ")}`);
+    return { config, policy: { preset, tools } };
   }
   if (!spec.tools?.length && !spec.allowAll) {
     throw new Error(`MCP server "${spec.name}" has no built-in read-only mode; list the tools to expose, e.g. --mcp-tools ${spec.name}=toolA,toolB`);

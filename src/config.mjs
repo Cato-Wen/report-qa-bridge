@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 
 export const HOME = process.env.RQB_HOME || path.join(os.homedir(), ".report-qa-bridge");
 export const PATHS = {
+  defaults: path.join(HOME, "defaults.json"),
   users: path.join(HOME, "users.json"),
   reports: path.join(HOME, "reports"),
   threads: path.join(HOME, "threads.json"),
@@ -29,6 +30,10 @@ export function writeJson(file, data) {
 }
 
 export const hashToken = t => crypto.createHash("sha256").update(String(t)).digest("hex");
+
+// ---------- defaults applied to newly registered reports ----------
+export const loadDefaults = () => ({ mcp: [], skills: [], ...readJson(PATHS.defaults, {}) });
+export const saveDefaults = d => writeJson(PATHS.defaults, d);
 
 // ---------- users ----------
 const NAME_RE = /^[a-z0-9][a-z0-9._-]{0,31}$/;

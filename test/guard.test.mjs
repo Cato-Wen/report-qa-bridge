@@ -49,6 +49,8 @@ test("files: secrets blocked, code allowed", () => {
   block("Read", { file_path: "D:/repo/.env.local" });
   block("Read", { file_path: "C:\\Users\\x\\.report-qa-bridge\\users.json" });
   block("Glob", { path: "D:/repo/.git/config" });
+  block("Read", { file_path: "C:\\Users\\x\\AppData\\Local\\Temp\\rqb-runtime-ab12\\md-1\\mcp.json" });
+  allow("Read", { file_path: "C:/Users/x/AppData/Local/Temp/rqb-runtime-ab12/md-1/plugin/skills/asd-ste100/references/rules.md" });
 });
 
 test("everything else blocked", () => {

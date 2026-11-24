@@ -6,7 +6,7 @@
 - **一个服务管多份报告**：每份报告由作者决定 fork 哪个会话、暴露哪些 MCP 和 skill、哪些人可以问。
 - **默认安全**：
   - 没有 Bash，不能写文件；
-  - MongoDB 自动只读；
+  - MongoDB、BigQuery 自动只读；
   - 其他 MCP 必须列出允许调用的工具；
   - 每次工具调用都要过 guard hook 检查。
 - **零依赖**：Node 18+ 即可，报告用 `file://` 打开也能用。
@@ -37,14 +37,17 @@ npm link        # 可选：之后可以直接用 `rqb` 命令；不 link 就用 
 # 1. 给每个同事发一个个人口令（只显示一次；--out 表示写入文件，方便逐个转发）
 rqb user add knight,robert,bonnie --out ~/rqb-tokens.txt
 
-# 2. 登记报告，同时把问答面板注入 HTML
+# 2.（可选）设置新报告默认暴露的 MCP 和 skill
+rqb defaults set --mcp mongodb-qa,mongodb-uat,mongodb-prod,bigquery
+
+# 3. 登记报告，同时把问答面板注入 HTML（没有指定 --mcp / --skills 时使用默认值）
 #    默认 fork 你在这个仓库里最近的交互会话（--session current）
 rqb report add docs/report.html --id my-report \
     --mcp mongodb-qa,mongodb-prod \
     --skills wonder-cookbook \
     --users knight,bonnie
 
-# 3. 启动服务（默认监听内网 0.0.0.0:8787，启动时会打印内网地址）
+# 4. 启动服务（默认监听内网 0.0.0.0:8787，启动时会打印内网地址）
 rqb serve
 ```
 
@@ -56,9 +59,9 @@ rqb serve
 |---|---|
 | `--session current\|none\|<id>` | 回答从哪个会话 fork 出来。`current` 表示 `--cwd` 下最近的交互会话；`none` 表示不带上下文 |
 | `--cwd <dir>` | 回答进程可以读的仓库目录（默认取 HTML 所在的 git 根目录） |
-| `--mcp a,b` | 暴露的 MCP server（从 `~/.claude.json` 和 `.mcp.json` 中查找）。**MongoDB 会被强制只读**：加 `--readOnly`，禁用 `export`，guard 拦截 `$out` / `$merge` / `$where` |
+| `--mcp a,b\|none` | 暴露的 MCP server（从 `~/.claude.json` 和 `.mcp.json` 中查找），不指定时使用 `rqb defaults` 的默认值。有两类会被强制只读：**MongoDB**（加 `--readOnly`，禁用 `export`，guard 拦截 `$out` / `$merge` / `$where`）；**BigQuery**（Google MCP Toolbox `--prebuilt bigquery`：只开放元数据工具和 `execute_sql`，guard 只放行单条 `SELECT` / `WITH` 查询；`forecast` / `analyze_contribution` / `ask_data_insights` 不开放） |
 | `--mcp-tools name=t1,t2` | 只暴露某个 server 的部分工具。**没有内置只读模式的 server 必须指定**，否则拒绝登记 |
-| `--skills a,b` | 暴露的 skill：会复制进一个私有 plugin，以 `rqb:<name>` 的名字出现。`--restricted` 模式下没有 Bash，依赖脚本的 skill 用不了 |
+| `--skills a,b\|none` | 暴露的 skill：会复制进一个私有 plugin（符号链接会解析成实际文件），以 `rqb:<name>` 的名字出现，可以读取自己的 `references/`。没有 Bash，所以 skill 附带的脚本跑不了 |
 | `--users a,b\|*` | 谁可以问（默认 `*`，表示所有用户） |
 | `--prompt <text>` | 给回答模型的补充说明 |
 | `--lang zh\|en` | 面板语言（默认取 `<html lang>`） |
@@ -72,6 +75,7 @@ rqb serve [--local] [--port 8787] [--allow ip1,ip2] [--concurrency 2] [--per-use
 rqb user add|rotate <a,b,...> [--out file]  |  rqb user remove <name>  |  rqb user list
 rqb report add <html> --id <id> [选项]  |  update <id> [选项]  |  list  |  show <id>  |  remove <id>
 rqb inject <html> --id <id>      # 只重新注入面板（比如 HTML 重新生成之后）
+rqb defaults show | set [--mcp a,b|none] [--skills a,b|none]   # 新报告的默认值
 rqb stats [--days 7]             # 按人 / 报告统计问题数和花费
 rqb doctor                       # 检查 claude CLI、用户、报告、MCP、skill
 ```
@@ -94,6 +98,8 @@ rqb doctor                       # 检查 claude CLI、用户、报告、MCP、s
    - 拦截读取 `.env`、密钥、`.claude`、`.git` 等路径。
 5. **系统提示词**：同事的问题按不可信输入处理；不输出凭据和个人信息；用提问人使用的语言回答。
 6. **MCP 凭据**：运行时从作者的 `~/.claude.json` 读取，写到系统临时目录（`rqb-runtime-*`），退出时删除；如果是被强杀的，下次启动时会清理。
+
+BigQuery 的只读是靠 guard 检查 SQL 实现的（Toolbox 0.17 没有只读开关）。更稳妥的做法是给 `GOOGLE_APPLICATION_CREDENTIALS` 用一个只有 BigQuery Data Viewer + Job User 权限的服务账号。
 
 最强的保证是**数据库账号本身只读**。如果有只读账号，在 `~/.claude.json` 里单独加一个条目（比如 `mongodb-prod-ro`），报告里用这个名字即可。
 
