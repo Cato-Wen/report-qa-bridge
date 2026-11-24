@@ -15,16 +15,27 @@ const BUILTIN = ["Read", "Grep", "Glob"];
 
 export const RUNTIME_PREFIX = "rqb-runtime-";
 
-/** Remove runtime dirs left by hard-killed earlier runs (they contain MCP credentials). */
-export function sweepStaleRuntime() {
-  for (const d of fs.readdirSync(os.tmpdir())) {
-    if (d.startsWith(RUNTIME_PREFIX)) { try { fs.rmSync(path.join(os.tmpdir(), d), { recursive: true, force: true }); } catch {} }
+const PID_FILE = "owner.pid";
+const isAlive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
+
+/**
+ * Remove runtime dirs left by hard-killed earlier runs (they contain MCP credentials).
+ * Dirs owned by a still-running bridge (e.g. a second instance on another port) are kept.
+ */
+export function sweepStaleRuntime(base = os.tmpdir()) {
+  for (const d of fs.readdirSync(base)) {
+    if (!d.startsWith(RUNTIME_PREFIX)) continue;
+    const dir = path.join(base, d);
+    const pid = Number((() => { try { return fs.readFileSync(path.join(dir, PID_FILE), "utf8"); } catch { return ""; } })());
+    if (pid && pid !== process.pid && isAlive(pid)) continue;
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
   }
 }
 
 export class Runtime {
   constructor() {
     this.dir = fs.mkdtempSync(path.join(os.tmpdir(), RUNTIME_PREFIX));
+    fs.writeFileSync(path.join(this.dir, PID_FILE), String(process.pid));
     this.cache = new Map(); // reportId -> { mtime, prepared }
     // --restricted ignores ~/.claude/settings.json, so carry over its env block (e.g. Vertex/Bedrock auth)
     this.env = readJson(path.join(os.homedir(), ".claude", "settings.json"), {}).env || {};
@@ -34,8 +45,14 @@ export class Runtime {
 
   prepare(report) {
     const hit = this.cache.get(report.id);
-    if (hit && hit.mtime === report._mtime) return hit.prepared;
+    // self-heal: rebuild if the files vanished (temp cleaners, antivirus, another tool)
+    const intact = p => fs.existsSync(p.mcpFile) && fs.existsSync(p.settingsFile) && (!p.pluginDir || fs.existsSync(p.pluginDir));
+    if (hit && hit.mtime === report._mtime && intact(hit.prepared)) return hit.prepared;
 
+    if (!fs.existsSync(this.dir)) {
+      fs.mkdirSync(this.dir, { recursive: true });
+      fs.writeFileSync(path.join(this.dir, PID_FILE), String(process.pid));
+    }
     const dir = path.join(this.dir, report.id);
     fs.mkdirSync(dir, { recursive: true });
     const catalog = loadMcpCatalog(report.cwd);
